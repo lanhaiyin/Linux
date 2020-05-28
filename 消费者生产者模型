@@ -1,0 +1,109 @@
+#include <iostream>
+#include <stdio.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <queue>
+#define pcount 3
+using namespace std;
+class BlockQueue
+{
+    public:
+        BlockQueue(size_t capacity)
+        {
+            _capacity=capacity;
+            pthread_mutex_init(&lock,NULL);
+            pthread_cond_init(&procond,NULL);
+            pthread_cond_init(&concond,NULL);
+        }
+        ~BlockQueue()
+        {
+            pthread_mutex_destroy(&lock);
+            pthread_cond_destroy(&procond);
+            pthread_cond_destroy(&concond);
+        }
+        void push(int& Data)
+        {
+            pthread_mutex_lock(&lock);
+            while(my_queue.size()==_capacity)
+            {
+                pthread_cond_wait(&procond,&lock);
+            }
+            my_queue.push(Data);
+            pthread_cond_signal(&concond);
+            pthread_mutex_unlock(&lock);
+        }
+        void pop(int *Data)
+        {
+            pthread_mutex_lock(&lock);
+            while(my_queue.size()==0)
+            {
+                pthread_cond_wait(&concond,&lock);
+            }
+           *Data=my_queue.front();
+            my_queue.pop();
+            pthread_cond_signal(&procond);
+            pthread_mutex_unlock(&lock);
+        }
+    private:
+        queue<int> my_queue;
+        size_t _capacity;
+        pthread_cond_t procond;
+        pthread_cond_t concond;
+        pthread_mutex_t lock;
+        
+};
+int i=0;
+void *productstart(void *arg)
+{
+    BlockQueue* bq=(BlockQueue*)arg;
+    
+    while(1)
+    {  
+        bq->push(i);
+        i++;
+        printf("线程%p，生产%d\n",pthread_self(),i);
+        
+    }
+
+}
+void *consumestart(void *arg)
+{
+    BlockQueue* bq=(BlockQueue*)arg;
+    while(1)
+    {
+        int Data;
+        bq->pop(&Data);
+            printf("消费者线程%p，消费%d\n",pthread_self(),Data);
+    }
+}
+int main()
+{
+    BlockQueue *bq=new BlockQueue(10);
+    //定义线程
+    pthread_t protid[pcount],contid[pcount];
+    //创建线程
+    int i=0;
+    for(;i<pcount;i++)
+    {
+        int ret=pthread_create(&protid[i],NULL,productstart,(void*)bq);
+        if(ret<0)
+        {
+            perror("pthread_create");
+            return 0;
+        }
+        ret=pthread_create(&contid[i],NULL,consumestart,(void*)bq);
+        if(ret<0)
+        {
+            perror("pthread_create");
+            return 0;
+        }
+    }
+   for(i=0;i<pcount;i++)
+   {
+       pthread_join(contid[i],NULL);
+       pthread_join(protid[i],NULL);
+   }
+   delete bq;
+   bq=NULL;
+return 0;
+}
