@@ -1,0 +1,160 @@
+#pragma once
+#include <unistd.h>
+#include <cstdio>
+#include <cstring>
+#include <iostream>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+using namespace std;
+class UdpSvr
+{
+   public:
+       UdpSvr()
+       {
+           sock_=-1;
+       }
+       ~UdpSvr()
+       {
+
+       }
+       //创建UDP套接字
+       bool CreateSocket()
+       {
+           sock_=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
+           if(sock_<0)
+           {
+               perror("socket");
+               return false;
+           }
+           return true;
+       }
+       //绑定地址信息
+       bool Bind(string &ip,uint16_t port)
+       {
+           struct sockaddr_in addr;
+           addr.sin_family=AF_INET;//填充地址域
+           addr.sin_port=htons(port);//端口
+           //inet_addr的作用：1.将点分十进制的ip转换成unit32_t类型
+       //2将主机字节序转换成网络字节序
+           addr.sin_addr.s_addr=inet_addr(ip.c_str());
+           int ret=bind(sock_,(struct sockaddr*)&addr,sizeof(addr));
+           if(ret<0)
+           {
+           perror("bind");
+           return false;
+           }
+           return true;
+       }
+       bool Sendto(string& data,struct sockaddr_in* destaddr)
+       {
+           int sendsize=sendto(sock_,data.c_str(),data.size(),0,(struct sockaddr*)destaddr,sizeof(struct sockaddr_in));
+           if(sendsize<0)
+           {
+           perror("sendto");
+           return false;
+           }
+           return true;
+       }
+       bool Recvfrom(string *buf,struct sockaddr_in *srcaddr)
+       {
+       char tmp[1024]={0};
+       socklen_t addrlen=sizeof(struct sockaddr_in);
+           int recvsize=recvfrom(sock_,tmp,sizeof(tmp)-1,0,(struct sockaddr*)srcaddr,&addrlen);
+       if(recvsize<0)
+       {
+           perror("recvfrom");
+           return false;
+       }
+       (*buf).assign(tmp,recvsize);
+       return true;
+       }
+       void Close()
+       {
+           close(sock_);
+           sock_=-1;
+       }
+   private:
+       int sock_;
+};
+#include "udpsvr.hpp"
+
+int main(int argc,char* argv[])
+{
+    // ./server ip port
+   if(argc!=3)
+   {
+       printf("请输入 ./server ip port\n");
+       return 0;
+   }
+   string ip=argv[1];
+   uint16_t port=atoi(argv[2]);
+
+   UdpSvr us;
+   if(!us.CreateSocket())
+   {
+       return 0;
+   }
+   if(!us.Bind(ip,port))
+   {
+       return 0;
+   }
+   while(1)
+   {
+       //发送数据
+       string buf;
+       struct sockaddr_in peeraddr;
+       //peeraddr对端地址信息
+       us.Recvfrom(&buf,&peeraddr);
+       printf("client say: %s\n",buf.c_str());
+
+       //发送数据
+       printf("server asy:");
+       fflush(stdout);
+       cin>>buf;
+       us.Sendto(buf,&peeraddr);
+   }
+   us.Close();
+   return 0;
+}
+
+#include "udpsvr.hpp"
+int main(int argc,char *argv[])
+{
+    if(argc!=3)
+    {
+        printf("./client ip port\n");
+        return 0;
+    }
+    string svr_ip=argv[1];
+    uint16_t svr_port=atoi(argv[2]);
+    UdpSvr us;
+    if(!us.CreateSocket())
+    {
+        return 0;
+    }
+    //组织服务器的地址信息，以便sendto使用
+    struct sockaddr_in destaddr;
+    destaddr.sin_family=AF_INET;
+    destaddr.sin_port=htons(svr_port);
+    destaddr.sin_addr.s_addr=inet_addr(svr_ip.c_str());
+
+    while(1)
+    {
+        //发送数据
+        printf("client asy:");
+        fflush(stdout);
+        string buf;
+        cin>>buf;
+        us.Sendto(buf,&destaddr);
+        //接收数据
+        struct sockaddr_in peeraddr;
+        us.Recvfrom(&buf,&peeraddr);
+        printf("server say:%s\n",buf.c_str());
+    }
+    us.Close();
+    return 0;
+}
+
+原文链接：https://blog.csdn.net/weixin_41548145/article/details/106835668
